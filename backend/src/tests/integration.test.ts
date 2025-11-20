@@ -1,8 +1,9 @@
 import request from 'supertest';
-import mongoose from 'mongoose';
-import app from '../server'; // Assuming server exports the app
-import User from '../models/User';
-import Contract from '../models/Contract';
+import app from '../server';
+import { AppDataSource } from '../data-source';
+import { User, UserRole } from '../entities/User';
+import { Contract } from '../entities/Contract';
+import bcrypt from 'bcryptjs';
 
 describe('Integration Tests', () => {
   let token: string;
@@ -10,29 +11,40 @@ describe('Integration Tests', () => {
   let contractId: string;
 
   beforeAll(async () => {
-    // Connect to test DB
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/pacta-test');
+    if (!AppDataSource.isInitialized) {
+      await AppDataSource.initialize();
+    }
   });
 
   afterAll(async () => {
-    await mongoose.connection.dropDatabase();
-    await mongoose.connection.close();
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const userRepository = AppDataSource.getRepository(User);
+    
+    await contractRepository.delete({});
+    await userRepository.delete({});
+    
+    if (AppDataSource.isInitialized) {
+      await AppDataSource.destroy();
+    }
   });
 
   beforeEach(async () => {
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const userRepository = AppDataSource.getRepository(User);
+
     // Clear collections
-    await User.deleteMany({});
-    await Contract.deleteMany({});
+    await contractRepository.delete({});
+    await userRepository.delete({});
 
     // Create test user
-    const user = new User({
+    const user = userRepository.create({
       email: 'test@example.com',
-      password: await require('bcryptjs').hash('password', 10),
+      password: await bcrypt.hash('password', 10),
       name: 'Test User',
-      role: 'user'
+      role: UserRole.USER
     });
-    await user.save();
-    userId = user._id.toString();
+    await userRepository.save(user);
+    userId = user.id;
 
     // Login to get token
     const res = await request(app)
@@ -58,7 +70,7 @@ describe('Integration Tests', () => {
       .set('Authorization', `Bearer ${token}`)
       .send(contractData);
     expect(createRes.status).toBe(201);
-    contractId = createRes.body._id;
+    contractId = createRes.body.id;
 
     // Retrieve contract
     const getRes = await request(app)
@@ -84,7 +96,7 @@ describe('Integration Tests', () => {
       .post('/contracts')
       .set('Authorization', `Bearer ${token}`)
       .send(contractData);
-    contractId = createRes.body._id;
+    contractId = createRes.body.id;
 
     // Create supplement
     const supplementData = {
@@ -108,14 +120,16 @@ describe('Integration Tests', () => {
   });
 
   it('should enforce role-based access', async () => {
+    const userRepository = AppDataSource.getRepository(User);
+    
     // Create admin user
-    const admin = new User({
+    const admin = userRepository.create({
       email: 'admin@example.com',
-      password: await require('bcryptjs').hash('password', 10),
+      password: await bcrypt.hash('password', 10),
       name: 'Admin User',
-      role: 'admin'
+      role: UserRole.ADMIN
     });
-    await admin.save();
+    await userRepository.save(admin);
 
     const adminLogin = await request(app)
       .post('/auth/login')

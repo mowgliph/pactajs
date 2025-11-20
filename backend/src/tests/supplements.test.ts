@@ -1,8 +1,8 @@
 import request from 'supertest';
-import mongoose from 'mongoose';
 import app from '../server';
-import Contract from '../models/Contract';
-import User from '../models/User';
+import { AppDataSource } from '../data-source';
+import { Contract, ContractStatus, ContractType } from '../entities/Contract';
+import { User, UserRole } from '../entities/User';
 
 describe('Supplements API', () => {
   let token: string;
@@ -10,37 +10,51 @@ describe('Supplements API', () => {
   let userId: string;
 
   beforeAll(async () => {
+    if (!AppDataSource.isInitialized) {
+      await AppDataSource.initialize();
+    }
+
     // Create test user
-    const user = new User({
+    const userRepository = AppDataSource.getRepository(User);
+    const user = userRepository.create({
       email: 'test@example.com',
-      password: 'hashedpassword'
+      password: 'hashedpassword',
+      name: 'Test User',
+      role: UserRole.USER
     });
-    await user.save();
-    userId = user._id.toString();
+    await userRepository.save(user);
+    userId = user.id;
 
     // Create test contract
-    const contract = new Contract({
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const contract = contractRepository.create({
       title: 'Test Contract',
       parties: ['Party A', 'Party B'],
       object: 'Test object',
       startDate: new Date(),
       endDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       amount: 1000,
-      type: 'service',
-      createdBy: userId,
-      supplements: []
+      type: ContractType.SERVICE,
+      createdBy: user,
+      status: ContractStatus.ACTIVE
     });
-    await contract.save();
-    contractId = contract._id.toString();
+    await contractRepository.save(contract);
+    contractId = contract.id;
 
     // Mock JWT token
     token = 'mock-jwt-token';
   });
 
   afterAll(async () => {
-    await Contract.deleteMany({});
-    await User.deleteMany({});
-    await mongoose.connection.close();
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const userRepository = AppDataSource.getRepository(User);
+    
+    await contractRepository.delete({});
+    await userRepository.delete({});
+    
+    if (AppDataSource.isInitialized) {
+      await AppDataSource.destroy();
+    }
   });
 
   describe('POST /supplements/:contractId', () => {

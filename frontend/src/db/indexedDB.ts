@@ -2,7 +2,6 @@ import Dexie, { Table } from 'dexie';
 
 export interface Contract {
   id?: number;
-  _id?: string; // MongoDB ID
   title: string;
   parties: string[];
   object: string;
@@ -28,26 +27,25 @@ export interface Contract {
 export interface DashboardData {
   id?: number;
   totalContracts: number;
-  statusCounts: { _id: string; count: number }[];
-  typeCounts: { _id: string; count: number }[];
+  statusCounts: { id: string; count: number }[];
+  typeCounts: { id: string; count: number }[];
   upcomingExpirations: any[];
   recentActivities: any[];
   avgAmount: number;
   contractsPerMonth: any[];
-  partiesDistribution: { _id: string; count: number }[];
+  partiesDistribution: { id: string; count: number }[];
   cachedAt: string;
 }
 
 export interface Notification {
   id?: number;
-  _id?: string; // MongoDB ID
   type: string;
   title: string;
   message: string;
   read: boolean;
   createdAt: string;
   contractId: {
-    _id: string;
+    id: number;
     title: string;
     endDate: string;
   };
@@ -56,7 +54,6 @@ export interface Notification {
 
 export interface UserProfile {
   id?: number;
-  _id: string;
   name: string;
   email: string;
   role: string;
@@ -89,11 +86,11 @@ export class PACTADatabase extends Dexie {
 
   constructor() {
     super('PACTA_DB');
-    this.version(6).stores({
-      contracts: '++id, _id, title, status, type, synced',
+    this.version(7).stores({
+      contracts: '++id, title, status, type, synced',
       dashboard: '++id, cachedAt',
-      notifications: '++id, _id, read, synced',
-      userProfile: '++id, _id, cachedAt',
+      notifications: '++id, read, synced',
+      userProfile: '++id, cachedAt',
       cachedDocuments: '++id, contractId, documentId, cachedAt',
       uploadQueue: '++id, contractId, queuedAt'
     });
@@ -108,9 +105,9 @@ export const syncContracts = async () => {
   const unsynced = await db.contracts.where('synced').equals(false).toArray();
   for (const contract of unsynced) {
     try {
-      if (contract._id) {
+      if (contract.id) {
         // Update existing
-        await fetch(`http://localhost:5000/contracts/${contract._id}`, {
+        await fetch(`http://localhost:5000/contracts/${contract.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
           body: JSON.stringify(contract)
@@ -123,7 +120,7 @@ export const syncContracts = async () => {
           body: JSON.stringify(contract)
         });
         const data = await response.json();
-        contract._id = data._id;
+        contract.id = data.id;
       }
       contract.synced = true;
       await db.contracts.put(contract);
@@ -139,7 +136,7 @@ export const syncContracts = async () => {
     });
     const serverContracts = await response.json();
     for (const serverContract of serverContracts) {
-      const local = await db.contracts.where('_id').equals(serverContract._id).first();
+      const local = await db.contracts.where('id').equals(serverContract.id).first();
       if (!local || local.updatedAt < serverContract.updatedAt) {
         await db.contracts.put({ ...serverContract, synced: true });
       }
@@ -201,13 +198,13 @@ export const updateNotificationOffline = async (id: number, updates: Partial<Not
   await db.notifications.update(id, { ...updates, synced: false });
 };
 
-export const getNotificationOffline = async (id: string) => {
-  return await db.notifications.where('_id').equals(id).first();
+export const getNotificationOffline = async (id: number) => {
+  return await db.notifications.where('id').equals(id).first();
 };
 
 // Supplement offline functions
-export const addSupplementOffline = async (contractId: string, supplement: any) => {
-  const contract = await db.contracts.where('_id').equals(contractId).first();
+export const addSupplementOffline = async (contractId: number, supplement: any) => {
+  const contract = await db.contracts.where('id').equals(contractId).first();
   if (contract) {
     contract.supplements = contract.supplements || [];
     contract.supplements.push(supplement);
@@ -216,8 +213,8 @@ export const addSupplementOffline = async (contractId: string, supplement: any) 
   }
 };
 
-export const getSupplementsOffline = async (contractId: string) => {
-  const contract = await db.contracts.where('_id').equals(contractId).first();
+export const getSupplementsOffline = async (contractId: number) => {
+  const contract = await db.contracts.where('id').equals(contractId).first();
   return contract?.supplements || [];
 };
 

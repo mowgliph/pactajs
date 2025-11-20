@@ -1,5 +1,7 @@
 import webpush from 'web-push';
-import User from '../models/User.js';
+import { AppDataSource } from '../data-source.js';
+import { User } from '../entities/User.js';
+import { PushSubscription } from '../entities/PushSubscription.js';
 
 // Configure VAPID keys (in production, these should be environment variables)
 const vapidKeys = {
@@ -16,7 +18,12 @@ webpush.setVapidDetails(
 // Send push notification to a user
 export const sendPushNotification = async (userId: string, notification: { title: string; body: string; icon?: string; data?: any }) => {
   try {
-    const user = await User.findById(userId);
+    const userRepository = AppDataSource.getRepository(User);
+    const user = await userRepository.findOne({
+      where: { id: userId },
+      relations: ['pushSubscriptions']
+    });
+
     if (!user || !user.pushSubscriptions || user.pushSubscriptions.length === 0) {
       return; // No subscriptions to send to
     }
@@ -29,15 +36,23 @@ export const sendPushNotification = async (userId: string, notification: { title
     });
 
     // Send to all user's subscriptions
-    const promises = user.pushSubscriptions.map(subscription =>
-      webpush.sendNotification(subscription, payload).catch(error => {
+    const promises = user.pushSubscriptions.map(subscription => {
+      const pushSubscription = {
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: subscription.p256dh,
+          auth: subscription.auth
+        }
+      };
+
+      return webpush.sendNotification(pushSubscription, payload).catch(error => {
         console.error('Error sending push notification:', error);
         // If subscription is invalid, remove it
         if (error.statusCode === 410) {
           removePushSubscription(userId, subscription.endpoint);
         }
-      })
-    );
+      });
+    });
 
     await Promise.all(promises);
   } catch (error) {
@@ -48,9 +63,30 @@ export const sendPushNotification = async (userId: string, notification: { title
 // Add a push subscription for a user
 export const addPushSubscription = async (userId: string, subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) => {
   try {
-    await User.findByIdAndUpdate(userId, {
-      $addToSet: { pushSubscriptions: subscription }
+    const subscriptionRepository = AppDataSource.getRepository(PushSubscription);
+    
+    // Check if subscription already exists
+    const existingSubscription = await subscriptionRepository.findOne({
+      where: { endpoint: subscription.endpoint }
     });
+
+    if (existingSubscription) {
+      // Update existing subscription if needed (e.g. user changed)
+      if (existingSubscription.userId !== userId) {
+        existingSubscription.userId = userId;
+        await subscriptionRepository.save(existingSubscription);
+      }
+      return;
+    }
+
+    const newSubscription = subscriptionRepository.create({
+      userId,
+      endpoint: subscription.endpoint,
+      p256dh: subscription.keys.p256dh,
+      auth: subscription.keys.auth
+    });
+
+    await subscriptionRepository.save(newSubscription);
   } catch (error) {
     console.error('Error adding push subscription:', error);
     throw error;
@@ -60,9 +96,8 @@ export const addPushSubscription = async (userId: string, subscription: { endpoi
 // Remove a push subscription for a user
 export const removePushSubscription = async (userId: string, endpoint: string) => {
   try {
-    await User.findByIdAndUpdate(userId, {
-      $pull: { pushSubscriptions: { endpoint } }
-    });
+    const subscriptionRepository = AppDataSource.getRepository(PushSubscription);
+    await subscriptionRepository.delete({ userId, endpoint });
   } catch (error) {
     console.error('Error removing push subscription:', error);
   }

@@ -1,8 +1,9 @@
 import express from 'express';
-import mongoose from 'mongoose';
+import "reflect-metadata";
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import { AppDataSource } from './data-source.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import contractRoutes from './routes/contracts.js';
@@ -27,12 +28,15 @@ app.use('/auth', authLimiter);
 app.use('/api', apiLimiter); // Assuming routes are under /api, but adjust as needed
 
 const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/pacta';
 
-mongoose.connect(MONGO_URI).then(() => {
-  console.log('MongoDB connected');
-  startScheduler(); // Start the notification scheduler
-}).catch(err => console.error(err));
+AppDataSource.initialize()
+    .then(() => {
+        console.log("Data Source has been initialized!")
+        startScheduler(); // Start the notification scheduler
+    })
+    .catch((err) => {
+        console.error("Error during Data Source initialization", err)
+    })
 
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);

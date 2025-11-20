@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { userAPI } from '../services/api';
 
 interface User {
-  _id: string;
+  id: string;
   name: string;
   email: string;
   role: string;
@@ -29,7 +29,7 @@ const AdminUsers: React.FC = () => {
     if (window.confirm('Are you sure you want to delete this user?')) {
       try {
         await userAPI.deleteUser(id);
-        setUsers(users.filter(user => user._id !== id));
+        setUsers(users.filter(user => user.id !== id));
       } catch (err) {
         setError('Failed to delete user');
       }
@@ -39,7 +39,7 @@ const AdminUsers: React.FC = () => {
   const handleRoleChange = async (id: string, newRole: string) => {
     try {
       await userAPI.updateUser(id, { role: newRole });
-      setUsers(users.map(user => user._id === id ? { ...user, role: newRole } : user));
+      setUsers(users.map(user => user.id === id ? { ...user, role: newRole } : user));
     } catch (err) {
       setError('Failed to update user role');
     }
@@ -52,7 +52,7 @@ const AdminUsers: React.FC = () => {
       <div className="bg-white shadow overflow-hidden sm:rounded-md">
         <ul className="divide-y divide-gray-200">
           {users.map((user) => (
-            <li key={user._id} className="px-6 py-4">
+            <li key={user.id} className="px-6 py-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-900">{user.name}</p>
@@ -61,14 +61,14 @@ const AdminUsers: React.FC = () => {
                 <div className="flex items-center space-x-4">
                   <select
                     value={user.role}
-                    onChange={(e) => handleRoleChange(user._id, e.target.value)}
+                    onChange={(e) => handleRoleChange(user.id, e.target.value)}
                     className="border border-gray-300 rounded px-2 py-1 text-sm"
                   >
                     <option value="user">User</option>
                     <option value="admin">Admin</option>
                   </select>
                   <button
-                    onClick={() => handleDelete(user._id)}
+                    onClick={() => handleDelete(user.id)}
                     className="text-red-600 hover:text-red-900 text-sm"
                   >
                     Delete

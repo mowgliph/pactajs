@@ -1,9 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import User from '../models/User.js';
+import { AppDataSource } from '../data-source';
+import { User } from '../entities/User';
 
 interface AuthRequest extends Request {
-  user?: any;
+  user?: User;
 }
 
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -12,7 +13,9 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     if (!token) return res.status(401).send('Access denied');
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as any;
-    const user = await User.findById(decoded.id);
+    const userRepository = AppDataSource.getRepository(User);
+    const user = await userRepository.findOneBy({ id: decoded.id });
+    
     if (!user) return res.status(401).send('Invalid token');
 
     req.user = user;

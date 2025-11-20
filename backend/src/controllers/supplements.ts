@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
-import Contract from '../models/Contract.js';
+import { AppDataSource } from '../data-source.js';
+import { Contract } from '../entities/Contract.js';
+import { ContractSupplement } from '../entities/ContractSupplement.js';
+import { ContractHistory } from '../entities/ContractHistory.js';
 import { createNotification } from './notifications.js';
 
 interface AuthRequest extends Request {
@@ -12,8 +15,16 @@ export const createSupplement = async (req: AuthRequest, res: Response) => {
     const { contractId } = req.params;
     const { modifiedFields, effectiveDate, reason } = req.body;
 
-    const query = req.user?.role === 'admin' ? { _id: contractId } : { _id: contractId, createdBy: req.user?.id };
-    const contract = await Contract.findOne(query);
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const supplementRepository = AppDataSource.getRepository(ContractSupplement);
+    const historyRepository = AppDataSource.getRepository(ContractHistory);
+
+    const query: any = { id: contractId };
+    if (req.user?.role !== 'admin') {
+      query.createdById = req.user?.id;
+    }
+
+    const contract = await contractRepository.findOne({ where: query });
     if (!contract) return res.status(404).send('Contract not found');
 
     // Validate modifiedFields
@@ -23,36 +34,41 @@ export const createSupplement = async (req: AuthRequest, res: Response) => {
 
     // Apply changes to contract
     for (const change of modifiedFields) {
-      if (contract.hasOwnProperty(change.field)) {
-        contract[change.field] = change.newValue;
+      if (change.field in contract) {
+        (contract as any)[change.field] = change.newValue;
       }
     }
 
     // Create supplement entry
-    const supplement = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+    const supplement = supplementRepository.create({
+      contractId: contract.id,
       modifiedFields,
       effectiveDate: new Date(effectiveDate),
-      createdAt: new Date(),
       reason
-    };
+    });
 
-    contract.supplements.push(supplement);
-    contract.history.push({
+    await supplementRepository.save(supplement);
+
+    // Create history entry
+    const history = historyRepository.create({
+      contractId: contract.id,
+      date: new Date(),
       action: 'supplement_added',
       details: `Supplement added: ${reason}`
     });
 
-    await contract.save();
+    await historyRepository.save(history);
+    await contractRepository.save(contract);
 
     // Check if supplement affects expiration, trigger notification
     const endDateChanged = modifiedFields.some((f: any) => f.field === 'endDate');
     if (endDateChanged) {
-      await createNotification(contract.createdBy.toString(), contractId, 'contract_updated', 'Contract Updated', `Supplement added to contract "${contract.title}": ${reason}`);
+      await createNotification(contract.createdById, contractId, 'contract_updated', 'Contract Updated', `Supplement added to contract "${contract.title}": ${reason}`);
     }
 
     res.status(201).json(supplement);
   } catch (error) {
+    console.error('Error creating supplement:', error);
     res.status(400).send('Error creating supplement');
   }
 };
@@ -61,12 +77,25 @@ export const createSupplement = async (req: AuthRequest, res: Response) => {
 export const getSupplements = async (req: AuthRequest, res: Response) => {
   try {
     const { contractId } = req.params;
-    const query = req.user?.role === 'admin' ? { _id: contractId } : { _id: contractId, createdBy: req.user?.id };
-    const contract = await Contract.findOne(query);
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const supplementRepository = AppDataSource.getRepository(ContractSupplement);
+
+    const query: any = { id: contractId };
+    if (req.user?.role !== 'admin') {
+      query.createdById = req.user?.id;
+    }
+
+    const contract = await contractRepository.findOne({ where: query });
     if (!contract) return res.status(404).send('Contract not found');
 
-    res.json(contract.supplements);
+    const supplements = await supplementRepository.find({
+      where: { contractId },
+      order: { createdAt: 'DESC' }
+    });
+
+    res.json(supplements);
   } catch (error) {
+    console.error('Error fetching supplements:', error);
     res.status(500).send('Error fetching supplements');
   }
 };
@@ -75,21 +104,42 @@ export const getSupplements = async (req: AuthRequest, res: Response) => {
 export const searchSupplements = async (req: AuthRequest, res: Response) => {
   try {
     const { date, field } = req.query;
-    const query = req.user?.role === 'admin' ? {} : { createdBy: req.user?.id };
-    const contracts = await Contract.find(query);
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const supplementRepository = AppDataSource.getRepository(ContractSupplement);
 
-    let supplements: any[] = [];
-    for (const contract of contracts) {
-      const filtered = contract.supplements.filter((supp: any) => {
-        if (date && new Date(supp.effectiveDate).toDateString() !== new Date(date as string).toDateString()) return false;
-        if (field && !supp.modifiedFields.some((f: any) => f.field === field)) return false;
-        return true;
-      });
-      supplements.push(...filtered.map((s: any) => ({ ...s, contractId: contract._id, contractTitle: contract.title })));
+    const contractQuery: any = {};
+    if (req.user?.role !== 'admin') {
+      contractQuery.createdById = req.user?.id;
     }
 
-    res.json(supplements);
+    const contracts = await contractRepository.find({ where: contractQuery });
+    const contractIds = contracts.map(c => c.id);
+
+    if (contractIds.length === 0) {
+      return res.json([]);
+    }
+
+    const supplements = await supplementRepository
+      .createQueryBuilder('supplement')
+      .leftJoinAndSelect('supplement.contract', 'contract')
+      .where('supplement.contractId IN (:...contractIds)', { contractIds })
+      .getMany();
+
+    const filteredSupplements = supplements.filter(supp => {
+      if (date && new Date(supp.effectiveDate).toDateString() !== new Date(date as string).toDateString()) return false;
+      if (field && !supp.modifiedFields.some((f: any) => f.field === field)) return false;
+      return true;
+    });
+
+    const result = filteredSupplements.map(s => ({
+      ...s,
+      contractId: s.contractId,
+      contractTitle: s.contract.title
+    }));
+
+    res.json(result);
   } catch (error) {
+    console.error('Error searching supplements:', error);
     res.status(500).send('Error searching supplements');
   }
 };

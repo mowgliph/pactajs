@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
-import Notification from '../models/Notification.js';
-import User from '../models/User.js';
+import { AppDataSource } from '../data-source.js';
+import { Notification, NotificationType } from '../entities/Notification.js';
+import { User } from '../entities/User.js';
 import jwt from 'jsonwebtoken';
 import { sendPushNotification, addPushSubscription, removePushSubscription, getVapidPublicKey } from '../services/webPush.js';
 
@@ -26,15 +27,22 @@ export const authenticate = (req: AuthRequest, res: Response, next: Function) =>
 export const getNotifications = async (req: AuthRequest, res: Response) => {
   try {
     const { read, limit = 50, skip = 0 } = req.query;
+    const notificationRepository = AppDataSource.getRepository(Notification);
+    
     const query: any = { userId: req.user?.id };
     if (read !== undefined) query.read = read === 'true';
-    const notifications = await Notification.find(query)
-      .populate('contractId', 'title endDate')
-      .sort({ createdAt: -1 })
-      .limit(Number(limit))
-      .skip(Number(skip));
+    
+    const notifications = await notificationRepository.find({
+      where: query,
+      relations: ['contract'],
+      order: { createdAt: 'DESC' },
+      take: Number(limit),
+      skip: Number(skip)
+    });
+    
     res.json(notifications);
   } catch (error) {
+    console.error('Error fetching notifications:', error);
     res.status(500).send('Error fetching notifications');
   }
 };
@@ -42,13 +50,19 @@ export const getNotifications = async (req: AuthRequest, res: Response) => {
 // Get a single notification
 export const getNotification = async (req: AuthRequest, res: Response) => {
   try {
-    const notification = await Notification.findOne({
-      _id: req.params.id,
-      userId: req.user?.id
-    }).populate('contractId', 'title endDate');
+    const notificationRepository = AppDataSource.getRepository(Notification);
+    const notification = await notificationRepository.findOne({
+      where: {
+        id: req.params.id,
+        userId: req.user?.id
+      },
+      relations: ['contract']
+    });
+    
     if (!notification) return res.status(404).send('Notification not found');
     res.json(notification);
   } catch (error) {
+    console.error('Error fetching notification:', error);
     res.status(500).send('Error fetching notification');
   }
 };
@@ -57,14 +71,20 @@ export const getNotification = async (req: AuthRequest, res: Response) => {
 export const markAsRead = async (req: AuthRequest, res: Response) => {
   try {
     const { read } = req.body;
-    const notification = await Notification.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user?.id },
-      { read },
-      { new: true }
-    );
+    const notificationRepository = AppDataSource.getRepository(Notification);
+    
+    const notification = await notificationRepository.findOne({
+      where: { id: req.params.id, userId: req.user?.id }
+    });
+    
     if (!notification) return res.status(404).send('Notification not found');
+    
+    notification.read = read;
+    await notificationRepository.save(notification);
+    
     res.json(notification);
   } catch (error) {
+    console.error('Error updating notification:', error);
     res.status(400).send('Error updating notification');
   }
 };
@@ -72,12 +92,16 @@ export const markAsRead = async (req: AuthRequest, res: Response) => {
 // Mark all notifications as read
 export const markAllAsRead = async (req: AuthRequest, res: Response) => {
   try {
-    await Notification.updateMany(
+    const notificationRepository = AppDataSource.getRepository(Notification);
+    
+    await notificationRepository.update(
       { userId: req.user?.id, read: false },
       { read: true }
     );
+    
     res.send('All notifications marked as read');
   } catch (error) {
+    console.error('Error updating notifications:', error);
     res.status(500).send('Error updating notifications');
   }
 };
@@ -91,22 +115,32 @@ export const createNotification = async (
   message: string
 ) => {
   try {
-    const notification = new Notification({
+    const notificationRepository = AppDataSource.getRepository(Notification);
+    const userRepository = AppDataSource.getRepository(User);
+    
+    // Map string type to enum if possible, or default to OTHER
+    let notificationType = NotificationType.OTHER;
+    if (Object.values(NotificationType).includes(type as NotificationType)) {
+      notificationType = type as NotificationType;
+    }
+
+    const notification = notificationRepository.create({
       userId,
       contractId,
-      type,
+      type: notificationType,
       title,
       message
     });
-    await notification.save();
+    
+    await notificationRepository.save(notification);
 
     // Send push notification if user has browser notifications enabled
-    const user = await User.findById(userId);
-    if (user?.notificationPreferences?.enableBrowserNotifications) {
+    const user = await userRepository.findOne({ where: { id: userId } });
+    if (user?.enableBrowserNotifications) {
       await sendPushNotification(userId, {
         title,
         body: message,
-        data: { contractId, notificationId: notification._id }
+        data: { contractId, notificationId: notification.id }
       });
     }
 
@@ -120,13 +154,16 @@ export const createNotification = async (
 // Delete a notification
 export const deleteNotification = async (req: AuthRequest, res: Response) => {
   try {
-    const notification = await Notification.findOneAndDelete({
-      _id: req.params.id,
+    const notificationRepository = AppDataSource.getRepository(Notification);
+    const result = await notificationRepository.delete({
+      id: req.params.id,
       userId: req.user?.id
     });
-    if (!notification) return res.status(404).send('Notification not found');
+    
+    if (result.affected === 0) return res.status(404).send('Notification not found');
     res.send('Notification deleted');
   } catch (error) {
+    console.error('Error deleting notification:', error);
     res.status(500).send('Error deleting notification');
   }
 };
@@ -134,15 +171,18 @@ export const deleteNotification = async (req: AuthRequest, res: Response) => {
 // Get notification preferences
 export const getNotificationPreferences = async (req: AuthRequest, res: Response) => {
   try {
-    const user = await User.findById(req.user?.id);
+    const userRepository = AppDataSource.getRepository(User);
+    const user = await userRepository.findOne({ where: { id: req.user?.id } });
+    
     if (!user) return res.status(404).send('User not found');
 
-    res.json(user.notificationPreferences || {
-      expirationWarningDays: 30,
-      enableBrowserNotifications: true,
-      enableEmailNotifications: false
+    res.json({
+      expirationWarningDays: user.expirationWarningDays,
+      enableBrowserNotifications: user.enableBrowserNotifications,
+      enableEmailNotifications: user.enableEmailNotifications
     });
   } catch (error) {
+    console.error('Error fetching preferences:', error);
     res.status(500).send('Error fetching preferences');
   }
 };
@@ -151,20 +191,24 @@ export const getNotificationPreferences = async (req: AuthRequest, res: Response
 export const updateNotificationPreferences = async (req: AuthRequest, res: Response) => {
   try {
     const { expirationWarningDays, enableBrowserNotifications, enableEmailNotifications } = req.body;
-    const user = await User.findByIdAndUpdate(
-      req.user?.id,
-      {
-        notificationPreferences: {
-          expirationWarningDays: expirationWarningDays || 30,
-          enableBrowserNotifications: enableBrowserNotifications !== false,
-          enableEmailNotifications: enableEmailNotifications || false
-        }
-      },
-      { new: true }
-    );
+    const userRepository = AppDataSource.getRepository(User);
+    
+    const user = await userRepository.findOne({ where: { id: req.user?.id } });
     if (!user) return res.status(404).send('User not found');
-    res.json(user.notificationPreferences);
+    
+    if (expirationWarningDays !== undefined) user.expirationWarningDays = expirationWarningDays;
+    if (enableBrowserNotifications !== undefined) user.enableBrowserNotifications = enableBrowserNotifications;
+    if (enableEmailNotifications !== undefined) user.enableEmailNotifications = enableEmailNotifications;
+    
+    await userRepository.save(user);
+    
+    res.json({
+      expirationWarningDays: user.expirationWarningDays,
+      enableBrowserNotifications: user.enableBrowserNotifications,
+      enableEmailNotifications: user.enableEmailNotifications
+    });
   } catch (error) {
+    console.error('Error updating preferences:', error);
     res.status(400).send('Error updating preferences');
   }
 };
@@ -176,6 +220,7 @@ export const subscribeToPush = async (req: AuthRequest, res: Response) => {
     await addPushSubscription(req.user?.id!, subscription);
     res.send('Subscription added');
   } catch (error) {
+    console.error('Error adding subscription:', error);
     res.status(400).send('Error adding subscription');
   }
 };
@@ -187,6 +232,7 @@ export const unsubscribeFromPush = async (req: AuthRequest, res: Response) => {
     await removePushSubscription(req.user?.id!, endpoint);
     res.send('Subscription removed');
   } catch (error) {
+    console.error('Error removing subscription:', error);
     res.status(400).send('Error removing subscription');
   }
 };

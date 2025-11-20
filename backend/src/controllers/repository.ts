@@ -3,7 +3,9 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import Contract from '../models/Contract.js';
+import { AppDataSource } from '../data-source.js';
+import { Contract } from '../entities/Contract.js';
+import { ContractDocument } from '../entities/ContractDocument.js';
 
 interface AuthRequest extends Request {
   user?: { id: string; role: string };
@@ -45,26 +47,33 @@ export const uploadDocument = [
   async (req: AuthRequest, res: Response) => {
     try {
       const { contractId } = req.params as { contractId: string };
-      const contract = await Contract.findOne({ _id: contractId, createdBy: req.user?.role === 'admin' ? { $exists: true } : req.user?.id });
+      const contractRepository = AppDataSource.getRepository(Contract);
+      const documentRepository = AppDataSource.getRepository(ContractDocument);
+
+      const query: any = { id: contractId };
+      if (req.user?.role !== 'admin') {
+        query.createdById = req.user?.id;
+      }
+
+      const contract = await contractRepository.findOne({ where: query });
       if (!contract) return res.status(404).send('Contract not found');
 
       if (!req.file) return res.status(400).send('No file uploaded');
 
-      const document = {
-        id: uuidv4(),
+      const document = documentRepository.create({
+        contractId: contract.id,
         filename: req.file.filename,
         originalName: req.file.originalname,
         path: req.file.path,
         size: req.file.size,
-        mimeType: req.file.mimetype,
-        uploadedAt: new Date()
-      };
+        mimeType: req.file.mimetype
+      });
 
-      contract.documents.push(document);
-      await contract.save();
+      await documentRepository.save(document);
 
       res.status(201).json(document);
     } catch (error) {
+      console.error('Error uploading document:', error);
       res.status(500).send('Error uploading document');
     }
   }
@@ -74,11 +83,25 @@ export const uploadDocument = [
 export const listDocuments = async (req: AuthRequest, res: Response) => {
   try {
     const { contractId } = req.params as { contractId: string };
-    const contract = await Contract.findOne({ _id: contractId, createdBy: req.user?.role === 'admin' ? { $exists: true } : req.user?.id });
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const documentRepository = AppDataSource.getRepository(ContractDocument);
+
+    const query: any = { id: contractId };
+    if (req.user?.role !== 'admin') {
+      query.createdById = req.user?.id;
+    }
+
+    const contract = await contractRepository.findOne({ where: query });
     if (!contract) return res.status(404).send('Contract not found');
 
-    res.json(contract.documents);
+    const documents = await documentRepository.find({
+      where: { contractId },
+      order: { uploadedAt: 'DESC' }
+    });
+
+    res.json(documents);
   } catch (error) {
+    console.error('Error fetching documents:', error);
     res.status(500).send('Error fetching documents');
   }
 };
@@ -87,14 +110,26 @@ export const listDocuments = async (req: AuthRequest, res: Response) => {
 export const downloadDocument = async (req: AuthRequest, res: Response) => {
   try {
     const { contractId, documentId } = req.params as { contractId: string; documentId: string };
-    const contract = await Contract.findOne({ _id: contractId, createdBy: req.user?.role === 'admin' ? { $exists: true } : req.user?.id });
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const documentRepository = AppDataSource.getRepository(ContractDocument);
+
+    const query: any = { id: contractId };
+    if (req.user?.role !== 'admin') {
+      query.createdById = req.user?.id;
+    }
+
+    const contract = await contractRepository.findOne({ where: query });
     if (!contract) return res.status(404).send('Contract not found');
 
-    const document = contract.documents.find(doc => doc.id === documentId);
+    const document = await documentRepository.findOne({
+      where: { id: documentId, contractId }
+    });
+
     if (!document) return res.status(404).send('Document not found');
 
     res.download(document.path, document.originalName);
   } catch (error) {
+    console.error('Error downloading document:', error);
     res.status(500).send('Error downloading document');
   }
 };
@@ -103,23 +138,37 @@ export const downloadDocument = async (req: AuthRequest, res: Response) => {
 export const deleteDocument = async (req: AuthRequest, res: Response) => {
   try {
     const { contractId, documentId } = req.params as { contractId: string; documentId: string };
-    const contract = await Contract.findOne({ _id: contractId, createdBy: req.user?.role === 'admin' ? { $exists: true } : req.user?.id });
+    const contractRepository = AppDataSource.getRepository(Contract);
+    const documentRepository = AppDataSource.getRepository(ContractDocument);
+
+    const query: any = { id: contractId };
+    if (req.user?.role !== 'admin') {
+      query.createdById = req.user?.id;
+    }
+
+    const contract = await contractRepository.findOne({ where: query });
     if (!contract) return res.status(404).send('Contract not found');
 
-    const docIndex = contract.documents.findIndex(doc => doc.id === documentId);
-    if (docIndex === -1) return res.status(404).send('Document not found');
+    const document = await documentRepository.findOne({
+      where: { id: documentId, contractId }
+    });
 
-    const document = contract.documents[docIndex];
+    if (!document) return res.status(404).send('Document not found');
 
     // Remove file from filesystem
-    fs.unlinkSync(document.path);
+    try {
+      if (fs.existsSync(document.path)) {
+        fs.unlinkSync(document.path);
+      }
+    } catch (err) {
+      console.error('Error deleting file from filesystem:', err);
+    }
 
-    // Remove from array
-    contract.documents.splice(docIndex, 1);
-    await contract.save();
+    await documentRepository.remove(document);
 
     res.send('Document deleted');
   } catch (error) {
+    console.error('Error deleting document:', error);
     res.status(500).send('Error deleting document');
   }
 };

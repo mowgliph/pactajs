@@ -1,6 +1,5 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import User from '../models/User';
 import { register, login, updateUser } from '../controllers/users';
 
 describe('User Functions', () => {

@@ -8,23 +8,23 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 
 interface DashboardData {
   totalContracts: number;
-  statusCounts: { _id: string; count: number }[];
-  typeCounts: { _id: string; count: number }[];
+  statusCounts: { id: string; count: number }[];
+  typeCounts: { id: string; count: number }[];
   upcomingExpirations: any[];
   recentActivities: any[];
   avgAmount: number;
   contractsPerMonth: any[];
-  partiesDistribution: { _id: string; count: number }[];
+  partiesDistribution: { id: string; count: number }[];
 }
 
 interface Notification {
-  _id: string;
+  id: number;
   title: string;
   message: string;
   read: boolean;
   createdAt: string;
   contractId: {
-    _id: string;
+    id: number;
     title: string;
     endDate: string;
   };
@@ -86,7 +86,7 @@ const Dashboard: React.FC = () => {
   if (!data) return <div className="p-4">No data available</div>;
 
   const statusPieData = {
-    labels: data.statusCounts.map(s => s._id),
+    labels: data.statusCounts.map(s => s.id),
     datasets: [{
       data: data.statusCounts.map(s => s.count),
       backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56'],
@@ -94,7 +94,7 @@ const Dashboard: React.FC = () => {
   };
 
   const typeBarData = {
-    labels: data.typeCounts.map(t => t._id),
+    labels: data.typeCounts.map(t => t.id),
     datasets: [{
       label: 'Contracts by Type',
       data: data.typeCounts.map(t => t.count),
@@ -102,7 +102,7 @@ const Dashboard: React.FC = () => {
     }],
   };
 
-  const monthLabels = data.contractsPerMonth.map(m => `${m._id.year}-${m._id.month}`);
+  const monthLabels = data.contractsPerMonth.map(m => `${m.id.year}-${m.id.month}`);
   const monthBarData = {
     labels: monthLabels,
     datasets: [{
@@ -128,7 +128,7 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="bg-white p-4 rounded shadow">
           <h2 className="text-lg font-semibold">Active Contracts</h2>
-          <p className="text-2xl">{data.statusCounts.find(s => s._id === 'active')?.count || 0}</p>
+          <p className="text-2xl">{data.statusCounts.find(s => s.id === 'active')?.count || 0}</p>
         </div>
         <div className="bg-white p-4 rounded shadow">
           <h2 className="text-lg font-semibold">Upcoming Expirations</h2>
@@ -160,7 +160,7 @@ const Dashboard: React.FC = () => {
           <div className="space-y-2">
             {notifications.slice(0, 3).map(notification => (
               <div
-                key={notification._id}
+                key={notification.id}
                 className={`p-3 border rounded ${notification.read ? 'bg-gray-50' : 'bg-blue-50 border-blue-200'}`}
               >
                 <h3 className="font-semibold text-sm">{notification.title}</h3>
