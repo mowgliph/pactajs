@@ -53,25 +53,6 @@ This guide provides instructions for deploying the PACTA web application, which 
 
 ## Production Deployment
 
-### Backend Deployment (Heroku Example)
-1. Create a Heroku app:
-   ```bash
-   heroku create your-pacta-backend
-   ```
-
-2. Set environment variables:
-   ```bash
-   heroku config:set MONGO_URI=your-mongodb-atlas-uri
-   heroku config:set JWT_SECRET=your-secret
-   heroku config:set VAPID_PUBLIC_KEY=your-public-key
-   heroku config:set VAPID_PRIVATE_KEY=your-private-key
-   ```
-
-3. Deploy:
-   ```bash
-   git push heroku main
-   ```
-
 ### Frontend Deployment (Vercel Example)
 1. Install Vercel CLI:
    ```bash
