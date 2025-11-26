@@ -237,6 +237,12 @@ export default function DashboardPage() {
                   Create New Contract
                 </Button>
               </Link>
+              <Link href="/supplements?action=create">
+                <Button className="w-full justify-start" variant="outline">
+                  <FilePlus className="mr-2 h-4 w-4" />
+                  Add New Supplement
+                </Button>
+              </Link>
               <Link href="/contracts">
                 <Button className="w-full justify-start" variant="outline">
                   <FileText className="mr-2 h-4 w-4" />
