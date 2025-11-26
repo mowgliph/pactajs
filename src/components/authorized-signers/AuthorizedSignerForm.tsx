@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AuthorizedSigner, Client, Supplier } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getClients, getSuppliers } from '@/lib/storage';
-import { upload } from '@zoerai/integration';
+import { upload } from '@/lib/upload';
 import { toast } from 'sonner';
 import { Upload, FileText, X } from 'lucide-react';
 

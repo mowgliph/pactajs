@@ -109,7 +109,7 @@ export default function LoginForm() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@pacta.com"
+                  placeholder="admin@pacta.local"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -127,7 +127,6 @@ export default function LoginForm() {
                 />
               </div>
               <div className="text-sm text-muted-foreground">
-                Default credentials: admin@pacta.com / admin123
               </div>
               <Button type="submit" className="w-full">
                 Login

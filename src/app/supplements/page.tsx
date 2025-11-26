@@ -4,20 +4,29 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Edit, Trash2, FileText } from 'lucide-react';
+import { Plus, Edit, Trash2 } from 'lucide-react';
 import { Supplement, SupplementStatus, Contract } from '@/types';
 import { getSupplements, setSupplements, getContracts, getCurrentUser } from '@/lib/storage';
+
+type SupplementFormData = {
+  contractId: string;
+  supplementNumber: string;
+  description: string;
+  effectiveDate: string;
+  modifications: string;
+  status: SupplementStatus;
+  documentUrl?: string;
+  documentKey?: string;
+  documentName?: string;
+};
 import { addAuditLog } from '@/lib/audit';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import AppLayout from '@/components/layout/AppLayout';
+import SupplementForm from '@/components/supplements/SupplementForm';
 import Link from 'next/link';
 
 export default function SupplementsPage() {
@@ -25,13 +34,16 @@ export default function SupplementsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingSupplement, setEditingSupplement] = useState<Supplement | undefined>();
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<SupplementFormData>({
     contractId: '',
     supplementNumber: '',
     description: '',
     effectiveDate: '',
     modifications: '',
     status: 'draft' as SupplementStatus,
+    documentUrl: '',
+    documentKey: '',
+    documentName: '',
   });
   const { hasPermission } = useAuth();
   const searchParams = useSearchParams();
@@ -53,8 +65,7 @@ export default function SupplementsPage() {
     setContracts(getContracts());
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (data: Omit<Supplement, 'id' | 'createdBy' | 'createdAt' | 'updatedAt'>) => {
     const user = getCurrentUser();
     if (!user) return;
 
@@ -63,23 +74,23 @@ export default function SupplementsPage() {
     if (editingSupplement) {
       const updated: Supplement = {
         ...editingSupplement,
-        ...formData,
+        ...data,
         updatedAt: new Date().toISOString(),
       };
       const newSupplements = allSupplements.map(s => s.id === updated.id ? updated : s);
       setSupplements(newSupplements);
-      addAuditLog(formData.contractId, 'Supplement Updated', `Supplement ${updated.supplementNumber} was updated`);
+      addAuditLog(data.contractId, 'Supplement Updated', `Supplement ${updated.supplementNumber} was updated`);
       toast.success('Supplement updated successfully');
     } else {
       const newSupplement: Supplement = {
-        ...formData,
+        ...data,
         id: Date.now().toString(),
         createdBy: user.id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       setSupplements([...allSupplements, newSupplement]);
-      addAuditLog(formData.contractId, 'Supplement Created', `Supplement ${newSupplement.supplementNumber} was created`);
+      addAuditLog(data.contractId, 'Supplement Created', `Supplement ${newSupplement.supplementNumber} was created`);
       toast.success('Supplement created successfully');
     }
 
@@ -97,6 +108,9 @@ export default function SupplementsPage() {
       effectiveDate: '',
       modifications: '',
       status: 'draft',
+      documentUrl: '',
+      documentKey: '',
+      documentName: '',
     });
   };
 
@@ -113,6 +127,9 @@ export default function SupplementsPage() {
       effectiveDate: supplement.effectiveDate,
       modifications: supplement.modifications,
       status: supplement.status,
+      documentUrl: supplement.documentUrl || '',
+      documentKey: supplement.documentKey || '',
+      documentName: supplement.documentName || '',
     });
     setShowForm(true);
   };
@@ -153,102 +170,13 @@ export default function SupplementsPage() {
   if (showForm) {
     return (
       <AppLayout>
-        <Card>
-          <CardHeader>
-            <CardTitle>{editingSupplement ? 'Edit Supplement' : 'Add New Supplement'}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="contractId">Parent Contract *</Label>
-                <Select 
-                  value={formData.contractId} 
-                  onValueChange={(value) => setFormData({ ...formData, contractId: value })}
-                  disabled={!!editingSupplement}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select contract" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {contracts.map((contract) => (
-                      <SelectItem key={contract.id} value={contract.id}>
-                        {contract.contractNumber} - {contract.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="supplementNumber">Supplement Number *</Label>
-                  <Input
-                    id="supplementNumber"
-                    value={formData.supplementNumber}
-                    onChange={(e) => setFormData({ ...formData, supplementNumber: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="effectiveDate">Effective Date *</Label>
-                  <Input
-                    id="effectiveDate"
-                    type="date"
-                    value={formData.effectiveDate}
-                    onChange={(e) => setFormData({ ...formData, effectiveDate: e.target.value })}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="status">Status *</Label>
-                <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value as SupplementStatus })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description *</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="modifications">Modifications Summary *</Label>
-                <Textarea
-                  id="modifications"
-                  value={formData.modifications}
-                  onChange={(e) => setFormData({ ...formData, modifications: e.target.value })}
-                  rows={4}
-                  required
-                />
-              </div>
-
-              <div className="flex gap-2 justify-end">
-                <Button type="button" variant="outline" onClick={resetForm}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  {editingSupplement ? 'Update Supplement' : 'Create Supplement'}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        <SupplementForm
+          onSubmit={handleSubmit}
+          editingSupplement={editingSupplement}
+          contracts={contracts}
+          formData={formData}
+          setFormData={setFormData}
+        />
       </AppLayout>
     );
   }
@@ -258,7 +186,7 @@ export default function SupplementsPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-muted-foreground">
-            Manage contract supplements and amendments
+            Manage contract supplements
           </p>
           {hasPermission('editor') && (
             <Button onClick={() => setShowForm(true)}>

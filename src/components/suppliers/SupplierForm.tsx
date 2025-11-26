@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Supplier } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { upload } from '@zoerai/integration';
+import { upload } from '../../lib/upload';
 import { toast } from 'sonner';
 import { Upload, FileText, X } from 'lucide-react';
 

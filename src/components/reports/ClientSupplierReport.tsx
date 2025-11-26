@@ -25,19 +25,23 @@ export default function ClientSupplierReport({ contracts, title = 'Client/Suppli
     const supplierMap = new Map<string, { count: number; totalValue: number; contracts: Contract[] }>();
 
     contracts.forEach(contract => {
-      // Client aggregation
-      const clientData = clientMap.get(contract.client) || { count: 0, totalValue: 0, contracts: [] };
-      clientData.count++;
-      clientData.totalValue += contract.amount;
-      clientData.contracts.push(contract);
-      clientMap.set(contract.client, clientData);
+      if (contract.client) {
+        // Client aggregation
+        const clientData = clientMap.get(contract.client) || { count: 0, totalValue: 0, contracts: [] };
+        clientData.count++;
+        clientData.totalValue += contract.amount;
+        clientData.contracts.push(contract);
+        clientMap.set(contract.client, clientData);
+      }
 
-      // Supplier aggregation
-      const supplierData = supplierMap.get(contract.supplier) || { count: 0, totalValue: 0, contracts: [] };
-      supplierData.count++;
-      supplierData.totalValue += contract.amount;
-      supplierData.contracts.push(contract);
-      supplierMap.set(contract.supplier, supplierData);
+      if (contract.supplier) {
+        // Supplier aggregation
+        const supplierData = supplierMap.get(contract.supplier) || { count: 0, totalValue: 0, contracts: [] };
+        supplierData.count++;
+        supplierData.totalValue += contract.amount;
+        supplierData.contracts.push(contract);
+        supplierMap.set(contract.supplier, supplierData);
+      }
     });
 
     // Convert to arrays and sort by value

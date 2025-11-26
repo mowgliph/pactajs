@@ -2,16 +2,11 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { 
-  BarChart3, 
-  PieChart, 
-  TrendingUp, 
-  Users, 
-  Calendar, 
-  FileText, 
+import {
+  PieChart,
+  Users,
   FilePlus,
   AlertTriangle,
   DollarSign,
@@ -78,13 +73,13 @@ export default function ReportsPage() {
       result = result.filter(c => c.type === appliedFilters.type);
     }
     if (appliedFilters.client) {
-      result = result.filter(c => 
-        c.client.toLowerCase().includes(appliedFilters.client.toLowerCase())
+      result = result.filter(c =>
+        c.client?.toLowerCase().includes(appliedFilters.client?.toLowerCase())
       );
     }
     if (appliedFilters.supplier) {
-      result = result.filter(c => 
-        c.supplier.toLowerCase().includes(appliedFilters.supplier.toLowerCase())
+      result = result.filter(c =>
+        c.supplier?.toLowerCase().includes(appliedFilters.supplier?.toLowerCase())
       );
     }
     if (appliedFilters.amountMin) {

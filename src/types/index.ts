@@ -69,6 +69,8 @@ export interface Contract {
   title: string;
   clientId: string;
   supplierId: string;
+  client?: string;
+  supplier?: string;
   clientSignerId: string;
   supplierSignerId: string;
   startDate: string;
@@ -90,6 +92,9 @@ export interface Supplement {
   effectiveDate: string;
   modifications: string;
   status: SupplementStatus;
+  documentUrl?: string;
+  documentKey?: string;
+  documentName?: string;
   clientSignerId: string;
   supplierSignerId: string;
   createdBy: string;
